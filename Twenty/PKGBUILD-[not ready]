@@ -1,0 +1,71 @@
+# Maintainer: Ammar Haddadi <ammarhaddadi@protonmail.com>
+pkgname=twenty
+pkgver=0.12.0
+pkgrel=1
+pkgdesc="Modern, powerful, affordable platform to manage your customer relationships"
+arch=('x86_64')
+url="https://twenty.com"
+license=('AGPL-3.0 license')
+depends=('postgresql')
+makedepends=('git' 'yarn')
+source=("git+https://github.com/twentyhq/twenty.git")
+sha256sums=('SKIP')
+
+# seetings
+PG_GRAPHQL_VERSION=1.5.1
+PG_MAIN_VERSION=15
+TARGETARCH=amd64
+CARGO_PGRX_VERSION=0.11.2
+
+build() {
+	# needed AUR package
+	paru -S --needed nvm || yay -S --needed nvm
+
+	cd twenty
+
+	mkdri tmp_dir
+	cd tmp_dir
+
+	# initializing postgres on the system
+	if [ -d "/var/lib/postgres/data" ]; then
+		echo "User already has postgres configured"
+	else
+		su root -c 'mkdir -p /var/lib/postgres/data; \
+			 chown postgres /var/lib/postgres; \
+			 chown postgres /var/lib/postgres/*;  \
+			 su postgres -c "initdb -D /var/lib/postgres/data"'
+	fi
+	systemctl start postgresql.service
+
+	# installing pg-graphql
+	cargo install --locked cargo-pgrx@$CARGO_PGRX_VERSION
+	git clone --depth=1 https://github.com/supabase/pg_graphql.git
+	cd pg_graphql
+	# cargo pgrx install --release (still needs some costume patches firt I guess)
+
+	cd ../../
+	cp ./packages/twenty-postgres/init.sql /tmp/init.sql
+	sudo -u postgres psql -f /tmp/init.sql || echo "Failed to execute init.sql script."
+
+	# Setup environment variables
+	cp ./packages/twenty-front/.env.example ./packages/twenty-front/.env
+	cp ./packages/twenty-server/.env.example ./packages/twenty-server/.env
+
+	# node and yarn
+	source /usr/share/nvm/init-nvm.sh
+	nvm install 18
+	nvm use 18
+	yarn
+
+	#DB setup
+	npx nx database:reset twenty-server
+
+	rm -r temp_dir
+
+}
+
+# here we need to create shortcut for the app to run
+# source /usr/share/nvm/init-nvm.shs # for nvm to work, add it in launch command
+package() {
+
+}
